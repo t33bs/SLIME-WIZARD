@@ -1,8 +1,9 @@
-"""Regression: repeated Slimer edits must not duplicate or lose artwork."""
+"""Repeated staged Slimer edits and Undo/Redo preserve final artwork."""
 import os
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 import pytest
 from PIL import Image
+pytestmark = pytest.mark.usefixtures('isolate_gui_recovery')
 pytest.importorskip('PySide6')
 from PySide6.QtWidgets import QApplication
 from friendly_animator import Suite
@@ -14,7 +15,8 @@ def test_move_same_pixel_twice_then_undo_and_redo():
     window.confirm_unsaved_projects = lambda *args, **kwargs: True
     try:
         source = Image.new('RGBA', (128, 128))
-        source.putpixel((5, 5), (231, 72, 44, 255))
+        color = (231, 72, 44, 255)
+        source.putpixel((5, 5), color)
         window.model.import_part('source', source)
         window.assets.addItem('source')
         window.slimer_toggle.setChecked(True)
@@ -24,21 +26,19 @@ def test_move_same_pixel_twice_then_undo_and_redo():
 
         for start_x, end_x in ((5, 7), (7, 9)):
             window.slimer_paint(start_x, 5, False)
-            window.slimer_finish_selecting()
-            window.slimer_dx.setValue(end_x - start_x)
-            window.slimer_apply_move_to_pose()
-            assert window.slimer_selection is None or window.slimer_selection.mask.getbbox() is None
-            rendered = window.model.render()
-            assert rendered.getpixel((start_x, 5))[3] == 0
-            assert rendered.getpixel((end_x, 5)) == (231, 72, 44, 255)
+            assert window.slimer_create_editable_layer(), window.status.text()
+            window.x.setValue(end_x - start_x)
+            assert window.slimer_apply_move_to_pose(), window.status.text()
+            assert window.slimer_selection.mask.getbbox() is None
+            assert window.model.render().getpixel((start_x, 5))[3] == 0
+            assert window.model.render().getpixel((end_x, 5)) == color
             assert len(window.model.animations.get(animation, [])) == initial_frames
-            assert sum(p['name'] == 'Slimer pose overlay' for p in window.model.parts) == 1
-
+        assert sum(p['name'].startswith('Slimer Layer ') for p in window.model.parts) == 2
+        committed = window.model.render().tobytes()
         window.undo()
-        assert window.model.render().getpixel((7, 5)) == (231, 72, 44, 255)
-        assert window.model.render().getpixel((9, 5))[3] == 0
         window.redo()
-        assert window.model.render().getpixel((9, 5)) == (231, 72, 44, 255)
+        assert window.model.render().tobytes() == committed
+        assert window.model.render().getpixel((9, 5)) == color
         assert window.model.render().getpixel((7, 5))[3] == 0
     finally:
         window.close()

@@ -1,14 +1,15 @@
-"""Phase 15: repeated Slimer edits must not create timeline frames implicitly."""
+"""Repeated staged Slimer edits do not implicitly create timeline frames."""
 import os
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 import pytest
 from PIL import Image
+pytestmark = pytest.mark.usefixtures('isolate_gui_recovery')
 pytest.importorskip('PySide6')
 from PySide6.QtWidgets import QApplication
 from friendly_animator import Suite
 
 
-def test_two_sequential_copy_moves_reuse_one_overlay_without_frames():
+def test_two_sequential_copy_moves_keep_independent_layers_without_frames():
     app = QApplication.instance() or QApplication([])
     window = Suite()
     window.confirm_unsaved_projects = lambda *args, **kwargs: True
@@ -24,22 +25,24 @@ def test_two_sequential_copy_moves_reuse_one_overlay_without_frames():
         before_frames = len(window.model.animations.get(animation, []))
         for x, y, dx in ((5, 5, 2), (10, 10, 3)):
             window.slimer_paint(x, y, False)
-            window.slimer_finish_selecting()
-            window.slimer_dx.setValue(dx)
-            window.slimer_apply_move_to_pose()
+            assert window.slimer_create_editable_layer(), window.status.text()
+            window.x.setValue(dx)
+            assert window.slimer_apply_move_to_pose(), window.status.text()
             assert len(window.model.animations.get(animation, [])) == before_frames
             assert not window.canvas.slimer_transform_mode
-        assert sum(p['name'] == 'Slimer pose overlay' for p in window.model.parts) == 1
-        overlay = next(p['image'] for p in window.model.parts if p['name'] == 'Slimer pose overlay')
-        assert overlay.getpixel((7, 5)) == (255, 0, 0, 255)
-        assert overlay.getpixel((13, 10)) == (0, 0, 255, 255)
+        layers = [p for p in window.model.parts if p['name'].startswith('Slimer Layer ')]
+        assert len(layers) == 2
+        rendered = window.model.render()
+        assert rendered.getpixel((7, 5)) == (255, 0, 0, 255)
+        assert rendered.getpixel((13, 10)) == (0, 0, 255, 255)
+        assert rendered.getpixel((5, 5)) == (255, 0, 0, 255)
         assert source.getpixel((5, 5)) == (255, 0, 0, 255)
     finally:
         window.close()
 
 
 def test_two_sequential_move_original_then_place_frame():
-    """Windows regression: second Apply Move and Place Frame without disabling Slimer."""
+    """Second Apply Move and Place Frame work without deactivating Slimer."""
     app = QApplication.instance() or QApplication([])
     window = Suite()
     window.confirm_unsaved_projects = lambda *args, **kwargs: True
@@ -55,8 +58,8 @@ def test_two_sequential_move_original_then_place_frame():
         initial_frames = len(window.model.animations.get(animation, []))
         for x, y, dx in ((5, 5, 2), (10, 10, 3)):
             window.slimer_paint(x, y, False)
-            window.slimer_finish_selecting()
-            window.slimer_dx.setValue(dx)
+            assert window.slimer_create_editable_layer(), window.status.text()
+            window.x.setValue(dx)
             assert window.slimer_apply_move_to_pose(), window.status.text()
             assert not window.canvas.slimer_transform_mode
             assert len(window.model.animations.get(animation, [])) == initial_frames
@@ -73,7 +76,7 @@ def test_two_sequential_move_original_then_place_frame():
 
 
 def test_place_frame_with_unfinished_slimer_highlight_is_nondestructive():
-    """Place Frame must work without disabling Slimer or committing an unfinished move."""
+    """Place Frame while highlighting must not commit a source move."""
     app = QApplication.instance() or QApplication([])
     window = Suite()
     window.confirm_unsaved_projects = lambda *args, **kwargs: True
@@ -86,7 +89,7 @@ def test_place_frame_with_unfinished_slimer_highlight_is_nondestructive():
         window.slimer_move_original.setChecked(True)
         animation = window.anim.currentText()
         before = len(window.model.animations.get(animation, []))
-        window.slimer_paint(5, 5, False)  # still highlighting; no Finish Selecting
+        window.slimer_paint(5, 5, False)
         assert not window.canvas.slimer_transform_mode
         assert window.slimer_place_frame(), window.status.text()
         assert len(window.model.animations[animation]) == before + 1

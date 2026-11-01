@@ -1,8 +1,9 @@
-"""Phase 15 safety checks for sequential Slimer edits in a single working pose."""
+"""Move Original then Copy Pixels creates independent editable layers, no frames."""
 import os
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 import pytest
 from PIL import Image
+pytestmark = pytest.mark.usefixtures('isolate_gui_recovery')
 pytest.importorskip('PySide6')
 from PySide6.QtWidgets import QApplication
 from friendly_animator import Suite
@@ -22,26 +23,24 @@ def test_move_original_then_copy_without_adding_frames():
         animation = window.anim.currentText()
         initial_frames = len(window.model.animations.get(animation, []))
 
-        # Move original red pixel: source should be cleared in working pose.
         window.slimer_move_original.setChecked(True)
         window.slimer_paint(5, 5, False)
-        window.slimer_finish_selecting()
-        window.slimer_dx.setValue(2)
-        window.slimer_apply_move_to_pose()
+        assert window.slimer_create_editable_layer(), window.status.text()
+        window.x.setValue(2)
+        assert window.slimer_apply_move_to_pose(), window.status.text()
         assert window.model.render().getpixel((5, 5))[3] == 0
         assert window.model.render().getpixel((7, 5)) == (255, 0, 0, 255)
 
-        # Copy blue pixel: source and destination must both remain.
         window.slimer_move_original.setChecked(False)
         window.slimer_paint(10, 10, False)
-        window.slimer_finish_selecting()
-        window.slimer_dx.setValue(3)
-        window.slimer_apply_move_to_pose()
+        assert window.slimer_create_editable_layer(), window.status.text()
+        window.x.setValue(3)
+        assert window.slimer_apply_move_to_pose(), window.status.text()
         rendered = window.model.render()
         assert rendered.getpixel((10, 10)) == (0, 0, 255, 255)
         assert rendered.getpixel((13, 10)) == (0, 0, 255, 255)
         assert rendered.getpixel((7, 5)) == (255, 0, 0, 255)
         assert len(window.model.animations.get(animation, [])) == initial_frames
-        assert sum(p['name'] == 'Slimer pose overlay' for p in window.model.parts) == 1
+        assert sum(p['name'].startswith('Slimer Layer ') for p in window.model.parts) == 2
     finally:
         window.close()
