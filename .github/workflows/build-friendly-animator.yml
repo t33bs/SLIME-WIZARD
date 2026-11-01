@@ -53,7 +53,7 @@ jobs:
         timeout-minutes: 15
         run: |
           $env:PYTHONUNBUFFERED = '1'
-          python -u -m pytest -vv -x --tb=short --durations=20 --timeout=120 --timeout-method=thread tests 2>&1 | Tee-Object -FilePath windows-pytest-results.txt
+          python -u -m pytest -vv --tb=short --durations=20 --timeout=120 --timeout-method=thread tests 2>&1 | Tee-Object -FilePath windows-pytest-results.txt
           if ($LASTEXITCODE -ne 0) { throw 'Pytest regression suite failed; review the uploaded Windows pytest log' }
 
       - name: Upload test logs for troubleshooting

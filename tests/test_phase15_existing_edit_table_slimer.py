@@ -32,14 +32,24 @@ def test_existing_table_transforms_each_new_slimer_layer_without_editing_source(
             assert pending['x'] == number * 3
             assert pending['y'] == number * 4
             assert window.model.angles[window.selected] == number * 10
-            # Selecting the original asset cannot mutate the frozen source
-            # while a destination is waiting for Apply Move.
+            # While Apply Move is pending, the source row is protected.
+            # Attempting to select it redirects the table to the staged layer.
+            # Do NOT edit the X spinner after this redirect: that would move
+            # the staged destination, not the original source (the old test
+            # accidentally set every staged layer's X to 9 this way).
+            source_part = window.model.parts[0]
+            source_geometry = (source_part['x'], source_part['y'])
+            source_pixels = source_part['image'].tobytes()
+            staged_geometry = (pending['x'], pending['y'])
             window.assets.setCurrentRow(0)
-            old_x = window.model.parts[0]['x']
-            window.x.setValue(old_x + 9)
-            assert window.model.parts[0]['x'] == old_x
-            window.assets.setCurrentRow(len(window.model.parts) - 1)
+            assert window.assets.currentRow() == len(window.model.parts) - 1
+            assert window.model.parts[window.selected] is pending
+            assert (source_part['x'], source_part['y']) == source_geometry
+            assert source_part['image'].tobytes() == source_pixels
+            assert (pending['x'], pending['y']) == staged_geometry
             assert window.slimer_apply_move_to_pose(), window.status.text()
+            assert (source_part['x'], source_part['y']) == source_geometry
+            assert source_part['image'].tobytes() == source_pixels
             created.append(pending)
         assert len({id(p) for p in created}) == 3
         assert all(any(p is q for q in window.model.parts) for p in created)

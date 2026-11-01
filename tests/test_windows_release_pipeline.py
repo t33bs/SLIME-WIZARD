@@ -83,7 +83,8 @@ class WindowsReleasePipelineTests(unittest.TestCase):
         workflow = workflow_source()
         self.assertIn("python-version: '3.13'", workflow)
         self.assertIn('python -m unittest discover -s tests -q', workflow)
-        self.assertIn('python -u -m pytest -vv -x', workflow)
+        self.assertIn('python -u -m pytest -vv --tb=short', workflow)
+        self.assertNotIn('pytest -vv -x', workflow)  # collect all errors, never hide failures
         self.assertIn('if: always()', workflow)  # publish test logs even on failure
         self.assertLess(workflow.index('Run existing unittest regressions'),
                         workflow.index('Build portable Windows EXE folder'))
@@ -109,7 +110,7 @@ class WindowsBuildTimeoutTests(unittest.TestCase):
 class WindowsPytestGateTests(unittest.TestCase):
     def test_windows_ci_runs_pytest_before_packaging(self):
         workflow = workflow_source()
-        pytest_command = ('python -u -m pytest -vv -x --tb=short --durations=20 '
+        pytest_command = ('python -u -m pytest -vv --tb=short --durations=20 '
                           '--timeout=120 --timeout-method=thread tests')
         self.assertIn(pytest_command, workflow)
         self.assertIn('Pytest regression suite failed', workflow)
