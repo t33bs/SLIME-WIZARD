@@ -44,13 +44,13 @@ class Phase13ExportIntegration(unittest.TestCase):
                     expected = loaded.render(loaded.animations[entry['animation']][entry['frame']])
                     self.assertEqual(frame.tobytes(), expected.tobytes())
             outputs = loaded.export_animations(root / 'exports', basename='test')
-            self.assertEqual({p.suffix for p in outputs}, {'.gif', '.apng'})
+            self.assertEqual({p.suffix for p in outputs}, {'.gif', '.png'})
             self.assertEqual(len(outputs), 4)
             for output in outputs:
                 with Image.open(output) as image:
                     self.assertEqual(image.n_frames, 2)
                     self.assertEqual(image.info.get('loop'), 0)
-                    if output.suffix == '.apng':
+                    if output.suffix == '.png':
                         name = 'Walk' if 'Walk' in output.name else 'Idle'
                         for index, expected_duration in enumerate(([120, 240] if name == 'Walk' else [160, 320])):
                             image.seek(index)

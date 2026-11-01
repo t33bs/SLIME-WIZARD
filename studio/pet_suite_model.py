@@ -754,40 +754,45 @@ class PetSuiteModel(CreatureRig):
         return [folder / name for name, _, _, _ in entries], metadata
 
     def export_animations(self, folder, basename='creature', gif=True, apng=True):
-        """Export each saved animation as an actual timed, looping GIF and/or APNG."""
+        """Export looping GIFs and animated PNGs without renaming single animations."""
         folder = Path(folder)
+        saved = [(animation, poses) for animation, poses in self.animations.items() if poses]
+        if not saved:
+            raise ValueError('Add and save at least one animation pose before exporting.')
+        if not (gif or apng):
+            raise ValueError('Select GIF and/or APNG to export.')
         folder.mkdir(parents=True, exist_ok=True)
         exported = []
         used_names = set()
-        for animation, poses in self.animations.items():
-            if not poses:
-                continue
+        multiple = len(saved) > 1
+        for animation, poses in saved:
             frames = [self.render(pose).convert('RGBA') for pose in poses]
             durations = [self.frame_duration(animation, i) for i in range(len(poses))]
-            safe = ''.join(ch if ch.isalnum() or ch in '-_' else '_' for ch in animation).strip('_') or 'animation'
-            # Different animation labels can sanitize to the same filename.
-            # Keep every export instead of silently overwriting an earlier one.
-            candidate = safe
-            suffix = 2
-            while candidate.casefold() in used_names:
-                candidate = f'{safe}_{suffix}'
-                suffix += 1
-            used_names.add(candidate.casefold())
-            prefix = folder / f'{basename}_{candidate}'
+            # Only multi-animation exports need an animation label to avoid
+            # overwriting one animation with another. Collapse separators for
+            # readable names like Idle_Breathing, not Idle___Breathing.
+            stem = str(basename)
+            if multiple:
+                safe = ''.join(ch if ch.isalnum() or ch in '-_' else '_' for ch in animation)
+                safe = '_'.join(part for part in safe.split('_') if part) or 'animation'
+                candidate = safe
+                suffix = 2
+                while candidate.casefold() in used_names:
+                    candidate = f'{safe}_{suffix}'
+                    suffix += 1
+                used_names.add(candidate.casefold())
+                stem = f'{basename}_{candidate}'
             if gif:
-                # GIF supports one-bit transparency and centisecond (10 ms) timing.
-                # Build a shared palette so colors don't flicker between poses.
                 from .gif_export import encode_gif
-                output = prefix.with_suffix('.gif')
+                output = folder / f'{stem}.gif'
                 encode_gif(frames, durations, output)
                 exported.append(output)
             if apng:
-                output = prefix.with_suffix('.apng')
+                # APNG is animated PNG content; .png plays correctly in Brave.
                 from .apng_export import encode_apng
+                output = folder / f'{stem}.png'
                 encode_apng(frames, durations, output)
                 exported.append(output)
-        if not exported:
-            raise ValueError('Add and save at least one animation pose before exporting.')
         return exported
 
     def reorder_part(self, index, offset):

@@ -53,7 +53,7 @@ class ProjectExportRoundTripTests(unittest.TestCase):
                     self.assertTrue(animation.is_animated)
                     self.assertGreater(animation.n_frames, 1)
                     self.assertEqual(animation.info['loop'], 0)
-                    name = 'Float / Spin' if 'Float___Spin' in output.name else 'Rest'
+                    name = 'Float / Spin' if 'Float_Spin' in output.name else 'Rest'
                     expected = [110, 270, 490] if name == 'Float / Spin' else [80, 310]
                     self.assertEqual(animation.n_frames, len(expected))
                     for i, ms in enumerate(expected):
