@@ -124,8 +124,15 @@ def test_blue_rotation_handle_is_clickable_after_edit_selection():
         QTest.mousePress(window.canvas, Qt.MouseButton.LeftButton, pos=start)
         QTest.mouseMove(window.canvas, pos=finish)
         QTest.mouseRelease(window.canvas, Qt.MouseButton.LeftButton, pos=finish)
-        assert window.model.angles.get(index) == 90
-        assert window.slimer_turn.value() == 90
+        # A Qt mouse event is rounded to an integer *screen* coordinate. On
+        # different Windows DPI/zoom layouts, the inverse canvas mapping may
+        # yield 89/90/91 degrees for the same nominal quarter-turn gesture.
+        # Still require a real near-90-degree rotation, matching angle widgets,
+        # and an intact source instead of weakening the interaction check.
+        observed = window.model.angles.get(index)
+        assert observed is not None
+        assert abs(observed - 90) <= 2, observed
+        assert window.slimer_turn.value() == observed
         assert window.model.parts[0]['image'].getpixel((40, 50))[3] == 255
     finally:
         window.close()
