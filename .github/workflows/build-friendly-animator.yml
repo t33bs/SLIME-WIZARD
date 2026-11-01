@@ -70,7 +70,12 @@ jobs:
         shell: pwsh
         timeout-minutes: 10
         run: |
-          python -m PyInstaller --noconfirm --clean --onedir --windowed --name SlimeWizard --icon studio/assets/wizard_slime.ico --add-data "studio/assets;studio/assets" friendly_animator.py
+          # Repository's packaging/ Python package shadows PyPI's packaging library
+          # in non-isolated launches. -I excludes the repository from Python's
+          # module search path while PyInstaller itself starts.
+          python -I -c "import packaging.requirements; import PyInstaller; print('Build imports OK')"
+          if ($LASTEXITCODE -ne 0) { throw 'Build import preflight failed' }
+          python -I -m PyInstaller --noconfirm --clean --onedir --windowed --name SlimeWizard --icon studio/assets/wizard_slime.ico --add-data "studio/assets;studio/assets" friendly_animator.py
           if ($LASTEXITCODE -ne 0) { throw 'PyInstaller failed' }
 
       - name: Record Windows display and Qt runtime diagnostics

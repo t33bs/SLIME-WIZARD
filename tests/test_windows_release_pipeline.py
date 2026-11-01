@@ -22,7 +22,7 @@ class WindowsReleasePipelineTests(unittest.TestCase):
     def test_windows_ci_builds_portable_exe_and_smokes_it(self):
         workflow = workflow_source()
         for term in ('runs-on: windows-latest',
-                     'python -m PyInstaller --noconfirm --clean --onedir --windowed',
+                     'python -I -m PyInstaller --noconfirm --clean --onedir --windowed',
                      '--name SlimeWizard',
                      'studio/assets/wizard_slime.ico',
                      '--add-data "studio/assets;studio/assets"',
@@ -31,6 +31,15 @@ class WindowsReleasePipelineTests(unittest.TestCase):
                      '--smoke-test', 'ExitCode'):
             with self.subTest(term=term):
                 self.assertIn(term, workflow)
+
+    def test_pyinstaller_isolation_avoids_local_packaging_module_shadow(self):
+        # Our own packaging/ directory is an importable package, so a normal
+        # `python -m PyInstaller` launch from repo root hides PyPI packaging.
+        workflow = workflow_source()
+        self.assertIn('python -I -c "import packaging.requirements; import PyInstaller;', workflow)
+        self.assertIn('python -I -m PyInstaller', workflow)
+        self.assertNotIn('python -m PyInstaller --noconfirm', workflow)
+        self.assertTrue((ROOT / 'packaging/__init__.py').exists())
 
     def test_gui_smoke_checks_window_transitions_and_resources(self):
         code = (ROOT / 'friendly_animator.py').read_text(encoding='utf-8')
@@ -116,4 +125,4 @@ class WindowsPytestGateTests(unittest.TestCase):
         self.assertIn('Pytest regression suite failed', workflow)
         self.assertIn('SlimeWizard-Phase103-Windows-Test-Logs', workflow)
         self.assertLess(workflow.index(pytest_command),
-                        workflow.index('python -m PyInstaller --noconfirm'))
+                        workflow.index('python -I -m PyInstaller --noconfirm'))
