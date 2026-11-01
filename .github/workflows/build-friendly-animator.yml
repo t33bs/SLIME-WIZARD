@@ -1,3 +1,5 @@
+name: Slime Wizard Phase 103 - Windows Portable
+
 on:
   workflow_dispatch:
   push:
@@ -6,7 +8,9 @@ on:
       - 'studio/**'
       - 'packaging/**'
       - 'tests/**'
+      - 'requirements.txt'
       - '.github/workflows/build-friendly-animator.yml'
+
 jobs:
   build:
     runs-on: windows-latest
@@ -14,166 +18,83 @@ jobs:
     env:
       PYTHONUTF8: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Check out Phase 103 source
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13 (matches stored AST baselines)
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-      - run: python -m pip install -r requirements.txt
-      - name: Install regression test runner
-        run: python -m pip install "pytest>=8,<10" "pytest-timeout>=2.3,<3"
-      - name: Compile all application and test modules
+          python-version: '3.13'
+
+      - name: Install application and test dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install "pytest>=8,<10" "pytest-timeout>=2.3,<3"
+
+      - name: Compile application and tests
         run: python -m compileall -q friendly_animator.py studio tests
-      - name: Verify checked-out source and test baseline
+
+      - name: Check source and Python version
         shell: pwsh
         run: |
-          Write-Host "Commit: $env:GITHUB_SHA"
+          python --version
           git rev-parse HEAD
-          python -c "import pathlib; p=pathlib.Path('friendly_animator.py'); s=p.read_text(encoding='utf-8'); required=['_timeline_structure_changed', '_after_history_restore', 'restart_playback']; missing=[name for name in required if name not in s]; print('Source:',p,'bytes:',p.stat().st_size,'missing expected methods:',missing); assert not missing, 'Outdated or incomplete Friendly Animator source checked out'"
-          python -c "import pathlib; p=pathlib.Path('studio/pet_suite_model.py'); print('Model:',p,'bytes:',p.stat().st_size); assert p.exists()"
-      - name: Run complete Phase 1 regression suite
+          python -c "from pathlib import Path; p=Path('friendly_animator.py'); s=p.read_text(encoding='utf8'); required=['_timeline_structure_changed', '_after_history_restore', 'restart_playback']; missing=[name for name in required if name not in s]; print('Missing required methods:',missing); assert not missing"
+
+      - name: Run existing unittest regressions
         shell: pwsh
         run: |
-          python -m unittest discover -s tests -q 2>&1 | Tee-Object -FilePath phase1-windows-test-results.txt
-          if ($LASTEXITCODE -ne 0) { throw 'Phase 1 regression suite failed' }
-      - name: Run pytest collection and integration regressions
+          python -m unittest discover -s tests -q 2>&1 | Tee-Object -FilePath windows-unittest-results.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Unittest regression suite failed' }
+
+      - name: Run full pytest and GUI regressions
         shell: pwsh
-        timeout-minutes: 12
+        timeout-minutes: 15
         run: |
-          # -vv identifies the last test started if Windows GUI integration hangs.
-          # pytest-timeout emits a stack trace rather than waiting indefinitely.
-          # -x stops at the first failure so the next run has a focused diagnosis.
           $env:PYTHONUNBUFFERED = '1'
-          python -u -m pytest -vv -x --tb=short --durations=20 --timeout=120 --timeout-method=thread tests 2>&1 | Tee-Object -FilePath phase1-windows-pytest-results.txt
-          if ($LASTEXITCODE -ne 0) { throw 'Pytest integration regression suite failed; inspect pytest log artifact for last test and traceback' }
-      - name: Upload Windows pytest regression log
+          python -u -m pytest -vv -x --tb=short --durations=20 --timeout=120 --timeout-method=thread tests 2>&1 | Tee-Object -FilePath windows-pytest-results.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Pytest regression suite failed; review the uploaded Windows pytest log' }
+
+      - name: Upload test logs for troubleshooting
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: FriendlyAnimator-Phase1-Windows-Pytest-Log
-          path: phase1-windows-pytest-results.txt
+          name: SlimeWizard-Phase103-Windows-Test-Logs
+          path: |
+            windows-unittest-results.txt
+            windows-pytest-results.txt
           if-no-files-found: warn
-      - name: Upload Windows regression test log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: FriendlyAnimator-Phase1-Windows-Regression-Log
-          path: phase1-windows-test-results.txt
-          if-no-files-found: warn
-      - run: pyinstaller --noconfirm --clean --onedir --windowed --name SlimeHouseFriendlyAnimator --icon studio/assets/wizard_slime.ico --add-data "studio/assets;studio/assets" friendly_animator.py
-      - name: Record Windows display and Qt runtime diagnostics
+
+      - name: Build portable Windows EXE folder
         shell: pwsh
         run: |
-          Write-Host "OS: $([System.Environment]::OSVersion.VersionString)"
-          Write-Host "Runner architecture: $env:PROCESSOR_ARCHITECTURE"
-          python -c "import PySide6; print('PySide6:', PySide6.__version__)"
-      - name: Test packaged GUI and offline resources on Windows
+          python -m PyInstaller --noconfirm --clean --onedir --windowed --name SlimeWizard --icon studio/assets/wizard_slime.ico --add-data "studio/assets;studio/assets" friendly_animator.py
+          if ($LASTEXITCODE -ne 0) { throw 'PyInstaller failed' }
+
+      - name: Verify packaged GUI starts
+        shell: pwsh
         timeout-minutes: 5
-        shell: pwsh
         run: |
-          $exe = Resolve-Path 'dist/SlimeHouseFriendlyAnimator/SlimeHouseFriendlyAnimator.exe'
+          $exe = Resolve-Path 'dist/SlimeWizard/SlimeWizard.exe'
+          if (!(Test-Path 'dist/SlimeWizard/_internal')) { throw 'Missing bundled dependencies' }
           $p = Start-Process -FilePath $exe -ArgumentList '--smoke-test' -PassThru -Wait
           if ($p.ExitCode -ne 0) { throw "Packaged GUI smoke test failed: $($p.ExitCode)" }
-      - name: Verify installed application files
-        shell: pwsh
-        run: |
-          if (!(Test-Path 'dist/SlimeHouseFriendlyAnimator/SlimeHouseFriendlyAnimator.exe')) { throw 'EXE missing' }
-          if (!(Test-Path 'dist/SlimeHouseFriendlyAnimator/_internal')) { throw 'Bundled dependencies missing' }
-      - name: Compile Windows installer
-        shell: pwsh
-        run: '& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DAppVersion=0.47.0 packaging\FriendlyAnimator.iss'
-      - name: Test silent install, installed GUI and uninstall on Windows
-        timeout-minutes: 10
+
+      - name: Package portable ZIP and checksum
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $setup = Get-ChildItem 'dist-installer/*.exe' | Select-Object -First 1
-          if (!$setup) { throw 'Installer not produced' }
-          $target = Join-Path $env:RUNNER_TEMP 'SlimeHouseFriendlyAnimator-Install-Test'
-          $log = Join-Path $env:RUNNER_TEMP 'friendly-installer.log'
-          $p = Start-Process -FilePath $setup.FullName -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=$target", "/LOG=$log") -Wait -PassThru
-          if ($p.ExitCode -ne 0) { throw "Installer failed: $($p.ExitCode)" }
-          $installed = Join-Path $target 'SlimeHouseFriendlyAnimator.exe'
-          if (!(Test-Path $installed)) { throw 'Installed EXE missing' }
-          $p = Start-Process -FilePath $installed -ArgumentList '--smoke-test' -Wait -PassThru
-          if ($p.ExitCode -ne 0) { throw "Installed GUI smoke test failed: $($p.ExitCode)" }
-          $uninstall = Join-Path $target 'unins000.exe'
-          if (!(Test-Path $uninstall)) { throw 'Uninstaller missing' }
-          $p = Start-Process -FilePath $uninstall -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -Wait -PassThru
-          if ($p.ExitCode -ne 0) { throw "Uninstaller failed: $($p.ExitCode)" }
-          if (Test-Path $installed) { throw 'Application executable remained after uninstall' }
-      - name: Test reinstall/upgrade and preservation of user projects
-        timeout-minutes: 12
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $setup = Get-ChildItem 'dist-installer/*.exe' | Select-Object -First 1
-          if (!$setup) { throw 'Installer not produced' }
-          $target = Join-Path $env:RUNNER_TEMP 'SlimeHouseFriendlyAnimator-Upgrade-Test'
-          $userData = Join-Path $env:RUNNER_TEMP 'FriendlyAnimator-UserProjects'
-          New-Item -ItemType Directory -Force -Path $userData | Out-Null
-          $project = Join-Path $userData 'precious-creature.project'
-          $original = [System.Text.Encoding]::UTF8.GetBytes('Keep my artwork safe across upgrades and uninstall!')
-          [System.IO.File]::WriteAllBytes($project, $original)
-          $expectedHash = (Get-FileHash -Algorithm SHA256 $project).Hash
-          $installArgs = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=$target")
-          foreach ($pass in 1..2) {
-            $p = Start-Process -FilePath $setup.FullName -ArgumentList $installArgs -Wait -PassThru
-            if ($p.ExitCode -ne 0) { throw "Install/upgrade pass $pass failed: $($p.ExitCode)" }
-            $exe = Join-Path $target 'SlimeHouseFriendlyAnimator.exe'
-            if (!(Test-Path $exe)) { throw "EXE missing after pass $pass" }
-            $p = Start-Process -FilePath $exe -ArgumentList '--smoke-test' -Wait -PassThru
-            if ($p.ExitCode -ne 0) { throw "GUI smoke failed after pass ${pass}: $($p.ExitCode)" }
-            if (!((Get-FileHash -Algorithm SHA256 $project).Hash -eq $expectedHash)) {
-              throw "User project changed during install/upgrade pass $pass"
-            }
-          }
-          $uninstall = Join-Path $target 'unins000.exe'
-          if (!(Test-Path $uninstall)) { throw 'Uninstaller missing after upgrade' }
-          $p = Start-Process -FilePath $uninstall -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -Wait -PassThru
-          if ($p.ExitCode -ne 0) { throw "Uninstall after upgrade failed: $($p.ExitCode)" }
-          if (Test-Path (Join-Path $target 'SlimeHouseFriendlyAnimator.exe')) { throw 'EXE remained after uninstall' }
-          if (!((Get-FileHash -Algorithm SHA256 $project).Hash -eq $expectedHash)) {
-            throw 'User project changed during uninstall'
-          }
-      - name: Upload installer diagnostics on failure
-        if: failure()
+          $zip = 'SlimeWizard-Phase103-Windows-Portable.zip'
+          Compress-Archive -Path 'dist/SlimeWizard' -DestinationPath $zip -Force
+          if (!(Test-Path $zip)) { throw 'Portable ZIP was not created' }
+          $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
+          "$hash  $zip" | Set-Content -Path 'SlimeWizard-Phase103-SHA256.txt' -Encoding utf8
+
+      - name: Upload portable Windows release (no installer)
         uses: actions/upload-artifact@v4
         with:
-          name: FriendlyAnimator-Installer-Diagnostics
-          path: ${{ runner.temp }}/friendly-installer.log
-          if-no-files-found: ignore
-      - name: Verify packaged release and write SHA256 manifest
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $portable = 'dist/SlimeHouseFriendlyAnimator/SlimeHouseFriendlyAnimator.exe'
-          if (!(Test-Path $portable)) { throw 'Portable executable missing before release' }
-          $installers = @(Get-ChildItem 'dist-installer/*.exe' -ErrorAction Stop)
-          if ($installers.Count -ne 1) { throw "Expected exactly one installer; found $($installers.Count)" }
-          $files = @((Get-Item $portable)) + $installers
-          $manifest = foreach ($file in $files) {
-            $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-            "$hash  $($file.Name)"
-          }
-          $manifest | Set-Content -Path 'phase1-release-sha256.txt' -Encoding utf8
-          foreach ($file in $files) {
-            $expected = (($manifest | Where-Object { $_ -like "*  $($file.Name)" }) -split '  ')[0]
-            $actual = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-            if ($actual -ne $expected) { throw "Release hash verification failed: $($file.Name)" }
-          }
-      - name: Upload release checksums
-        uses: actions/upload-artifact@v4
-        with:
-          name: FriendlyAnimator-Phase1-Release-SHA256
-          path: phase1-release-sha256.txt
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v4
-        with:
-          name: SlimeHouseFriendlyAnimator-Windows-Portable
-          path: dist/SlimeHouseFriendlyAnimator/
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v4
-        with:
-          name: SlimeHouseFriendlyAnimator-Windows-Installer
-          path: dist-installer/*.exe
+          name: SlimeWizard-Phase103-Windows-Portable
+          path: |
+            SlimeWizard-Phase103-Windows-Portable.zip
+            SlimeWizard-Phase103-SHA256.txt
           if-no-files-found: error
