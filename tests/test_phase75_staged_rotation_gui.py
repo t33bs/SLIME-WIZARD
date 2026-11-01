@@ -106,18 +106,25 @@ def test_blue_rotation_handle_is_clickable_after_edit_selection():
             window.slimer_paint(x, y, False)
         window.slimer_edit_asset.click()
         index = window.selected
-        pivot, handle, _ = window.canvas._selected_rotation_geometry(index)
+        pivot, _, _ = window.canvas._selected_rotation_geometry(index)
         scale, ox, oy = window.canvas._geometry()
 
         def point(x, y):
             return QPoint(round(ox+x*scale), round(oy+y*scale))
 
-        # Grab the blue circle above the selection and rotate to the right.
-        QTest.mousePress(window.canvas, Qt.MouseButton.LeftButton, pos=point(*handle))
-        QTest.mouseMove(window.canvas, pos=point(pivot[0] + 14, pivot[1]))
-        QTest.mouseRelease(window.canvas, Qt.MouseButton.LeftButton,
-                           pos=point(pivot[0] + 14, pivot[1]))
-        assert window.model.angles[index] == 90
+        # Current UI exposes one chosen X/Y/R/S handle, not all four at once.
+        # Choose R and click its actual visible screen position (the old
+        # geometric handle position is not always the clickable one).
+        window.canvas.set_canvas_handle_mode('rotate')
+        actual = window.canvas._asset_handle_screen('rotate')
+        assert actual is not None
+        start = QPoint(round(actual[0]), round(actual[1]))
+        assert window.canvas._asset_transform_hit(start) == 'rotate'
+        finish = point(pivot[0] + 14, pivot[1])
+        QTest.mousePress(window.canvas, Qt.MouseButton.LeftButton, pos=start)
+        QTest.mouseMove(window.canvas, pos=finish)
+        QTest.mouseRelease(window.canvas, Qt.MouseButton.LeftButton, pos=finish)
+        assert window.model.angles.get(index) == 90
         assert window.slimer_turn.value() == 90
         assert window.model.parts[0]['image'].getpixel((40, 50))[3] == 255
     finally:

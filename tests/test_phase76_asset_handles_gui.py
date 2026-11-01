@@ -118,15 +118,19 @@ def test_library_selection_controls_correct_asset_and_pending_lock():
         assert w.selected==selected
         assert 'Apply Move or Cancel' in w.status.text()
         assert w.slimer_apply_move_to_pose(),w.status.text()
-        # When the transaction is committed, choosing another library row
-        # changes the active controls without creating any extra layer.
-        w.assets.setCurrentRow(0)
-        assert w.selected==0
-        assert 'source' in w.active_asset_label.text()
+        # Move Original erased the only opaque source pixels, so selecting
+        # source and pressing Edit Selection should NOT turn a blank asset
+        # into a new editable layer.  Choose the confirmed visible layer
+        # first; its handles can then follow ordinary library selection.
+        assert w.model.parts[0]['image'].getchannel('A').getbbox() is None
+        w.assets.setCurrentRow(1)
         count=len(w.model.parts)
         w.slimer_edit_asset.click()
         assert w.canvas.asset_controls_enabled
         assert len(w.model.parts)==count
+        assert 'Slimer Layer' in w.active_asset_label.text()
+        w.assets.setCurrentRow(0)
+        assert w.selected==0
         assert 'source' in w.active_asset_label.text()
         w.assets.setCurrentRow(1)
         assert w.selected==1

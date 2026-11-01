@@ -55,9 +55,9 @@ def test_missing_staged_layer_can_be_cancelled_without_stranding_controls():
         assert window.slimer_create_editable_layer()
         pending = window._slimer_pending_part
         idx = next(i for i, part in enumerate(window.model.parts) if part is pending)
-        window.model.parts.pop(idx)
-        window.model.originals.pop(idx)
-        window.model.angles.pop(idx)
+        # Simulate external loss of the provisional layer using the model's
+        # safe removal API.  Unrotated layers have no angles[index] entry.
+        window.model.remove_unconfirmed_part(idx)
         window.assets.takeItem(idx)
         assert window.slimer_cancel_editable_layer() is False
         assert window._slimer_pending_part is None

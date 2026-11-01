@@ -18,7 +18,11 @@ def test_undo_staged_layer_does_not_consume_old_brush_history():
         window.model.import_part('source', image)
         window.assets.addItem('source')
         window.slimer_toggle.setChecked(True)
+        # The UI calls stroke-start before painting; direct slimer_paint()
+        # deliberately does not create a separate history entry.
+        window.slimer_start_stroke()
         window.slimer_paint(9, 9, False)
+        assert window.slimer_selection_undo
         assert window.slimer_create_editable_layer(), window.status.text()
         assert window._slimer_pending_part is not None
         assert window.slimer_selection_undo  # Brush history must not swallow model Undo
