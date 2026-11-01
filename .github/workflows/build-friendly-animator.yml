@@ -43,6 +43,7 @@ jobs:
 
       - name: Run existing unittest regressions
         shell: pwsh
+        timeout-minutes: 10
         run: |
           python -m unittest discover -s tests -q 2>&1 | Tee-Object -FilePath windows-unittest-results.txt
           if ($LASTEXITCODE -ne 0) { throw 'Unittest regression suite failed' }
@@ -67,9 +68,17 @@ jobs:
 
       - name: Build portable Windows EXE folder
         shell: pwsh
+        timeout-minutes: 10
         run: |
           python -m PyInstaller --noconfirm --clean --onedir --windowed --name SlimeWizard --icon studio/assets/wizard_slime.ico --add-data "studio/assets;studio/assets" friendly_animator.py
           if ($LASTEXITCODE -ne 0) { throw 'PyInstaller failed' }
+
+      - name: Record Windows display and Qt runtime diagnostics
+        shell: pwsh
+        run: |
+          Write-Host "Windows: $([System.Environment]::OSVersion.VersionString)"
+          Write-Host "Architecture: $env:PROCESSOR_ARCHITECTURE"
+          python -c "import PySide6; print('PySide6:', PySide6.__version__)"
 
       - name: Verify packaged GUI starts
         shell: pwsh
@@ -82,6 +91,7 @@ jobs:
 
       - name: Package portable ZIP and checksum
         shell: pwsh
+        timeout-minutes: 5
         run: |
           $ErrorActionPreference = 'Stop'
           $zip = 'SlimeWizard-Phase103-Windows-Portable.zip'
